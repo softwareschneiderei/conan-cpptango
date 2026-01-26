@@ -52,6 +52,7 @@ class CppTangoConan(ConanFile):
 
     def requirements(self):
         self.requires("zlib/1.2.11")
+        self.requires("libjpeg/9f")
         self.requires("zeromq/4.3.5")
         self.requires("cppzmq/4.11.0", transitive_headers=True)
         self.requires("omniorb/4.3.4", transitive_headers=True)
@@ -78,7 +79,8 @@ class CppTangoConan(ConanFile):
             'CMAKE_INSTALL_COMPONENT': "dynamic" if self.options.shared else "static",
             'BUILD_TESTING': 'OFF',
             'TANGO_GIT_REVISION': tango_release,
-            'TANGO_USE_TELEMETRY': 'OFF'
+            'TANGO_USE_TELEMETRY': 'OFF',
+            'OMNIIDL': f"{env_and_vars['OMNI_BASE']}/bin/omniidl"
         }
         if self.settings.os == "Windows" and self.options.pthread_windows:
             defs["PTHREAD_WIN"] = join(self.build_folder, "pthreads-win32").replace("\\", "/")
@@ -125,11 +127,6 @@ class CppTangoConan(ConanFile):
             "CPPZMQ_BASE": self.dependencies["cppzmq"].package_folder.replace("\\", "/"),
         }
 
-    def _configured_cmake(self):
-        cmake = CMake(self)
-        cmake.configure(build_script_folder=self.build_folder)
-        return cmake
-
     def _cmake_comment_out(self, file, content):
         replace_in_file(self, file, content, "# " + content)
 
@@ -138,57 +135,20 @@ class CppTangoConan(ConanFile):
             self._download_windows_pthreads()
 
         source_location = join(self.source_folder, "cppTango")
-        # idl_location = join(self.source_folder, "tango-idl/include/")
-        #
-        # os.makedirs("tango-idl/include", exist_ok=True)
-        # shutil.copy(join(idl_location, "tango.idl"), join(self.build_folder, "tango-idl/include/"))
 
         # tango seems to only support in-source builds right now
         shutil.copytree(source_location, self.build_folder, ignore=shutil.ignore_patterns(".git"), dirs_exist_ok=True)
 
-        # Make sure CMakeLists.txt preamble is correct
-        # self._cmake_comment_out("CMakeLists.txt", 'project(cppTango)')
-        # replace_in_file(self, "CMakeLists.txt", "cmake_minimum_required(VERSION 2.8.12)",
-        #                 'cmake_minimum_required(VERSION 3.15)\n' +
-        #                 'project(cppTango)\n\n' +
-        #                 'find_package(Threads REQUIRED)')
-        
         # Disable documentation build via Doxygen
         self._cmake_comment_out("src/CMakeLists.txt", "add_subdirectory(doxygen)",)
 
-        # cppTango is using the CMAKE_INSTALL_FULL_<> variables from GNUInstallDirs
-        # Replace them by their CMAKE_INSTALL_<> counterparts so CMAKE_INSTALL_PREFIX has an effect later
-        # full_install_rule_files = ["configure/CMakeLists.txt"]
-        # for file in full_install_rule_files:
-        #     replace_in_file(self, file, "CMAKE_INSTALL_FULL_", "CMAKE_INSTALL_")
+        replace_in_file(self, join(self.build_folder, "configure/CMakeLists.txt"), search="cppzmq::cppzmq", replace="cppzmq")
+
+        replace_in_file(self, join(self.build_folder, "configure/functions.cmake"), search="cppzmq::cppzmq", replace="cppzmq")
 
         target = "tango" # This works for linux and windows/shared
         if self.settings.os == "Linux":
             pass
-            # Disable tests since they do not work with python 3 (they need python 2)
-            # Only needed on linux, since they are disabled for windows anyways
-            # However, the test suite normally calls find_package for Threads, which is required for the build
-            # replace_in_file(self, join(self.build_folder, "CMakeLists.txt"),
-            #                 search='add_subdirectory("cpp_test_suite")', replace='')
-
-            # ...so we add that at the top of the file
-            # replace_in_file(self, "CMakeLists.txt", search="project(cppTango)",
-            #                 replace='project(cppTango)\n\n' +
-            #                 'find_package(Threads REQUIRED)')
-
-            # ...and make sure the test whether that worked is correct
-            # replace_in_file(self, join(self.build_folder, "log4tango/config/config.cmake"),
-            #                 search="CMAKE_THREAD_LIBS_INIT",
-            #                 replace="Threads_FOUND")
-
-            # Disable installation of the wrong variant (shared/static)
-            # cmake_linux = join(self.build_folder, "configure/cmake_linux.cmake")
-            # if not self.options.shared:
-            #     rule = 'install(TARGETS tango LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}")'
-            #     self._cmake_comment_out(cmake_linux, rule)
-            # else:
-            #     rule = 'install(TARGETS tango-static ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}")'
-            #     self._cmake_comment_out(cmake_linux, rule)
 
         # Replace library dependencies by what conan provides
         if self.settings.os == "Windows":
@@ -206,8 +166,9 @@ class CppTangoConan(ConanFile):
             # Override the target for static windows builds
             if not self.options.shared:
               target = "tango-static"
-        
-        cmake = self._configured_cmake()
+
+        cmake = CMake(self)
+        cmake.configure(build_script_folder=self.build_folder,cli_args=["--debug-trycompile"])
         cmake.build(target=target)
 
     def package(self):
