@@ -22,11 +22,11 @@ class CppTangoConan(ConanFile):
         pass
 
     def layout(self):
-        cmake_layout(self, src_folder="src/tango-idl")
+        cmake_layout(self, src_folder="src/")
 
     def source(self):
-        os.makedirs("tango-idl", exist_ok=True)
-        idl = Git(self, folder="tango-idl")
+        # os.makedirs("tango-idl", exist_ok=True)
+        idl = Git(self, folder=".")
         idl.fetch_commit("https://gitlab.com/tango-controls/tango-idl.git", "refs/tags/6.0.2")
 
     def generate(self):
@@ -51,3 +51,4 @@ class CppTangoConan(ConanFile):
 
     def package_info(self):
         self.cpp_info.set_property("cmake_file_name", "tangoidl")
+        self.cpp_info.set_property("cmake_target_name", "tangoidl::tangoidl")
