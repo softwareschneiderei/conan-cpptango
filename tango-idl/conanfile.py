@@ -36,13 +36,9 @@ class CppTangoConan(ConanFile):
     def configure(self):
         pass
 
-    def _configured_cmake(self):
+    def build(self):
         cmake = CMake(self)
         cmake.configure()
-        return cmake
-
-    def build(self):
-        cmake = self._configured_cmake()
         cmake.build()
 
     def package(self):
