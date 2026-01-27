@@ -1,67 +1,27 @@
 import os
 import shutil
-from shutil import copyfile
-from conans import ConanFile, tools, CMake
-from conans.errors import ConanException, ConanInvalidConfiguration
-
-DISABLE_RUNTIME_LIBRARY_OVERRIDES = "disable_runtime_library_overrides.patch"
-NO_SED_PATCH = "0001-Do-not-use-sed-for-file-enhancements.patch"
-CPPZMQ_INSTALL_PATCH = "fix_cppzmq_install_paths.patch"
-MAKE_PTHREAD_WIN_TRULY_OPTIONAL = "make_pthread_win_truly_optional.patch"
-TANGO_CONFIG_RESILIENT_AGAINST_PREDEFINES = "tango_config_resilient_against_predefines.patch"
-DO_NO_INSTALL_DEPENDENCIES = "do_not_install_dependencies.patch"
-FIX_LIBRARY_COMPONENTS = "fix_library_components.patch"
-
-PATCHES = [DISABLE_RUNTIME_LIBRARY_OVERRIDES,
-           NO_SED_PATCH, CPPZMQ_INSTALL_PATCH,
-           DO_NO_INSTALL_DEPENDENCIES,
-           MAKE_PTHREAD_WIN_TRULY_OPTIONAL,
-           TANGO_CONFIG_RESILIENT_AGAINST_PREDEFINES,
-           FIX_LIBRARY_COMPONENTS]
-
+from os.path import join
+from conan import ConanFile
+from conan.tools.env import Environment
+from conan.tools.cmake import CMake, CMakeToolchain, cmake_layout
+from conan.tools.scm import Git
+from conan.tools.files import replace_in_file, download, unzip, patch, copy
+from conan.errors import ConanException, ConanInvalidConfiguration
 
 PTHREADS_WIN32 = "https://github.com/tango-controls/Pthread_WIN32/releases/download/2.9.1/pthreads-win32-2.9.1_{0}.zip"
 
-
-def prepend_file_with(file_path, added):
-    lines = []
-    with open(file_path) as file:
-        lines = file.readlines()
-
-    # Prepend, if we have not already
-    if len(lines) >= len(added) and lines[:len(added)] != added:
-        lines = added + lines
-
-    with open(file_path, "w") as file:
-        file.writelines(lines)
-
-
-def replace_prefix_everywhere_in_pc_file(file, prefix):
-    pkg_config = tools.PkgConfig(file)
-    old_prefix = pkg_config.variables["prefix"]
-    tools.replace_in_file(file, old_prefix, prefix)
-
-
-# From https://stackoverflow.com/questions/1868714/how-do-i-copy-an-entire-directory-of-files-into-an-existing-directory-using-pyth/31039095
-def copytree(src, dst, symlinks=False, ignore=None):
-    for item in os.listdir(src):
-        s = os.path.join(src, item)
-        d = os.path.join(dst, item)
-        if os.path.isdir(s):
-            shutil.copytree(s, d, symlinks, ignore)
-        else:
-            shutil.copy2(s, d)
-
+tango_release='10.1.1'
 
 class CppTangoConan(ConanFile):
     name = "cpptango"
-    version = "9.3.3"
+    version = tango_release
     license = "LGPL-3.0"
     author = "Marius Elvert marius.elvert@softwareschneiderei.de"
     url = "https://github.com/softwareschneiderei/conan-cpptango"
     description = "Tango Control System C++ Libraries"
     topics = ("control-system",)
     settings = "os", "compiler", "build_type", "arch"
+    generators = "CMakeDeps"
     options = {
         "shared": [True, False],
         "pthread_windows": [True, False]
@@ -70,12 +30,8 @@ class CppTangoConan(ConanFile):
         "shared": False,
         "pthread_windows": False
     }
-    generators = "cmake"
     file_prefix = "{0}-{1}".format(name, version)
     source_archive = "{0}.tar.gz".format(file_prefix)
-    exports_sources = PATCHES
-    requires = "zlib/1.2.11", "zeromq/4.3.4",\
-               "cppzmq/4.5.0", "omniorb/4.2.3@softwareschneiderei/stable"
 
     def _download_windows_pthreads(self):
         if self.settings.arch == "x86_64":
@@ -90,23 +46,73 @@ class CppTangoConan(ConanFile):
         url = PTHREADS_WIN32.format(suffix)
         self.output.info("Downloading from {0}".format(url))
         zip_file = "pthreads-win32.zip"
-        tools.download(url, zip_file, overwrite=True)
-        tools.unzip(zip_file, "pthreads-win32")
+        download(self, url, zip_file)
+        unzip(self, zip_file, "pthreads-win32")
         os.unlink(zip_file)
 
-    def source(self):
-        tools.Git(folder="cppTango")\
-            .clone("https://github.com/tango-controls/cppTango.git",
-                   branch="refs/tags/9.3.3", shallow=True)
+    def requirements(self):
+        self.requires("zlib/1.2.11")
+        self.requires("libjpeg/9f")
+        self.requires("zeromq/4.3.5")
+        self.requires("cppzmq/4.11.0", transitive_headers=True)
+        self.requires("omniorb/4.3.4", transitive_headers=True)
+        self.requires("tango-idl/6.0.2")
 
-        idl = tools.Git(folder="tango-idl")
-        idl.clone("https://github.com/tango-controls/tango-idl")
-        idl.checkout("1e5edb84d966814ad367f2674ac9a5658b6724ac")
+    def layout(self):
+        cmake_layout(self, src_folder="src")
+
+    def source(self):
+        os.makedirs("cppTango", exist_ok=True)
+        cpp_tango = Git(self, folder="cppTango")
+        cpp_tango.fetch_commit("https://gitlab.com/tango-controls/cppTango.git", f"refs/tags/{tango_release}")
+
+        # Move patches to the cppTango folder
+        # for patch_file in PATCHES:
+        #     copy(self, patch_file, src=self.recipe_folder, dst=self.source_folder)
+
+    def generate(self):
+        self.output.info(f"Using omniORB from {self.dependencies['omniorb'].package_folder}")
+        env_and_vars = self._env_and_vars()
+        cmake = CMakeToolchain(self)
+        defs = {
+            'IDL_BASE': join(self.build_folder, "tango-idl").replace("\\", "/"),
+            'CMAKE_INSTALL_COMPONENT': "dynamic" if self.options.shared else "static",
+            'BUILD_TESTING': 'OFF',
+            'TANGO_GIT_REVISION': tango_release,
+            'TANGO_USE_TELEMETRY': 'OFF',
+            'OMNIIDL': f"{env_and_vars['OMNI_BASE']}/bin/omniidl"
+        }
+        if self.settings.os == "Windows" and self.options.pthread_windows:
+            defs["PTHREAD_WIN"] = join(self.build_folder, "pthreads-win32").replace("\\", "/")
+        if self.settings.os == "Windows":
+            defs["CMAKE_DEBUG_POSTFIX"] = "d"
+            defs["CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS"] = "ON" if self.options.shared else "OFF"
+            defs["OMNIORB_PKG_LIBRARIES"] = ';'.join(self.dependencies["omniorb"].cpp_info.libs)
+            defs["ZMQ_PKG_LIBRARIES"] = ';'.join(self.dependencies["zeromq"].cpp_info.libs)
+            defs["PTHREAD_WIN_PKG_LIBRARIES"] = ""
+            defs["CMAKE_BUILD_TYPE"] = str(self.settings.build_type).upper()
+            defs["TANGO_INSTALL_DEPENDENCIES"] = "OFF"
+
+        defs.update(env_and_vars)
+        for key, value in defs.items():
+            cmake.variables[key] = value
+
+        cmake.generate()
+
+        env = Environment()
+        for key, value in env_and_vars.items():
+            env.define(key, value)
+
+        envvars = env.vars(self)
+        envvars.save_script("setenv")
 
     def configure(self):
-        if self.settings.os == "Linux" and tools.os_info.is_linux and self.settings.compiler.libcxx != "libstdc++11":
+        if self.settings.os == "Linux" and self.settings.compiler.libcxx != "libstdc++11":
             raise ConanInvalidConfiguration("Conan needs the setting 'compiler.libcxx' to be 'libstdc++11' on linux")
-        
+
+        if self.settings.os == "Windows" and self.settings.compiler == "msvc" and self.settings.compiler.cppstd != 14:
+            raise ConanInvalidConfiguration("Tango does not support C++17 and higher on MSVC")
+
         self.options["omniorb"].shared = self.options.shared
         self.options["zeromq"].shared = self.options.shared
 
@@ -116,95 +122,73 @@ class CppTangoConan(ConanFile):
 
     def _env_and_vars(self):
         return {
-            "OMNI_BASE": self.deps_cpp_info["omniorb"].rootpath.replace("\\", "/"),
-            'ZMQ_BASE': self.deps_cpp_info["zeromq"].rootpath.replace("\\", "/"),
-            'CPPZMQ_BASE': self.deps_cpp_info["cppzmq"].rootpath.replace("\\", "/"),
+            "OMNI_BASE": self.dependencies["omniorb"].package_folder.replace("\\", "/"),
+            "ZMQ_BASE": self.dependencies["zeromq"].package_folder.replace("\\", "/"),
+            "CPPZMQ_BASE": self.dependencies["cppzmq"].package_folder.replace("\\", "/"),
         }
 
-    def _configured_cmake(self):
-        cmake = CMake(self)
-        env_and_vars = self._env_and_vars()
-        with tools.environment_append(env_and_vars):
-            defs = {
-                'IDL_BASE': os.path.join(self.build_folder, "tango-idl").replace("\\", "/"),
-                'CMAKE_INSTALL_COMPONENT': "dynamic" if self.options.shared else "static",
-            }
-            if self.settings.os == "Windows" and self.options.pthread_windows:
-                defs["PTHREAD_WIN"] = os.path.join(self.build_folder, "pthreads-win32").replace("\\", "/")
-            if self.settings.os == "Windows":
-                defs["CMAKE_DEBUG_POSTFIX"] = "d"
-                defs["CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS"] = "ON" if self.options.shared else "OFF"
-            defs.update(env_and_vars)
-
-            cmake.configure(
-                source_folder=self.build_folder,
-                defs=defs)
-        return cmake
-
     def _cmake_comment_out(self, file, content):
-        tools.replace_in_file(file, content, "# " + content)
+        replace_in_file(self, file, content, "# " + content)
 
     def build(self):
         if self.settings.os == "Windows" and self.options.pthread_windows:
             self._download_windows_pthreads()
 
-        source_location = os.path.join(self.source_folder, "cppTango")
-        idl_location = os.path.join(self.source_folder, "tango-idl")
-
-        os.makedirs("tango-idl/include", exist_ok=True)
-        shutil.copy(os.path.join(idl_location, "tango.idl"), os.path.join(self.build_folder, "tango-idl/include/"))
+        source_location = join(self.source_folder, "cppTango")
 
         # tango seems to only support in-source builds right now
-        copytree(source_location, self.build_folder, ignore=shutil.ignore_patterns(".git"))
+        shutil.copytree(source_location, self.build_folder, ignore=shutil.ignore_patterns(".git"), dirs_exist_ok=True)
 
-        # Apply all patches
-        for patch in PATCHES:
-            self.output.info("Applying patch: {0}".format(patch))
-            tools.patch(patch_file=os.path.join(self.source_folder, patch))
+        # Disable documentation build via Doxygen
+        self._cmake_comment_out("src/CMakeLists.txt", "add_subdirectory(doxygen)",)
 
-        # Disable installation of the wrong variant (shared/static)
+        replace_in_file(self, join(self.build_folder, "configure/CMakeLists.txt"), search="cppzmq::cppzmq", replace="cppzmq")
+
+        replace_in_file(self, join(self.build_folder, "configure/functions.cmake"), search="cppzmq::cppzmq", replace="cppzmq")
+
+        target = "tango" # This works for linux and windows/shared
         if self.settings.os == "Linux":
-            cmake_linux = os.path.join(self.build_folder, "configure/cmake_linux.cmake")
-            if not self.options.shared:
-                self._cmake_comment_out(cmake_linux, 'install(TARGETS tango LIBRARY DESTINATION "${CMAKE_INSTALL_FULL_LIBDIR}")')
-            else:
-                self._cmake_comment_out(cmake_linux, 'install(TARGETS tango-static ARCHIVE DESTINATION "${CMAKE_INSTALL_FULL_LIBDIR}")')
-        
+            pass
+
         # Replace library dependencies by what conan provides
         if self.settings.os == "Windows":
-            new_dependency_settings = [
-                'set(OMNIORB_PKG_LIBRARIES {0})\n'.format(';'.join(self.deps_cpp_info["omniorb"].libs)),
-                'set(ZMQ_PKG_LIBRARIES {0})\n'.format(';'.join(self.deps_cpp_info["zeromq"].libs)),
-                'set(PTHREAD_WIN_PKG_LIBRARIES "")\n',
-                'link_directories(${ZMQ_BASE}/lib)\n',
-            ]
-            prepend_file_with(os.path.join(self.build_folder, "configure/CMakeLists.txt"), new_dependency_settings)
-            cmake_windows = os.path.join(self.build_folder, "configure/cmake_win.cmake")
+            replace_in_file(self, join(self.build_folder, "configure/CMakeLists.txt"),
+                            search="include_directories(${ZMQ_BASE}/include)",
+                            replace="include_directories(${ZMQ_BASE}/include)\n    link_directories(${ZMQ_BASE}/lib)")
+            
+            cmake_windows = join(self.build_folder, "configure/cmake_win.cmake")
             dependency_variables = ["OMNIORB_PKG_LIBRARIES", "ZMQ_PKG_LIBRARIES", "PTHREAD_WIN_PKG_LIBRARIES"]
             for dependency_suffix in ["DYN", "STA"]:
                 for variable in dependency_variables:
-                    tools.replace_in_file(cmake_windows, '${{{1}_{0}}}'.format(dependency_suffix, variable), '${{{0}}}'.format(variable))
+                    replace_in_file(self, cmake_windows, '${{{1}_{0}}}'.format(dependency_suffix, variable),
+                                          '${{{0}}}'.format(variable))
+            
+            # Override the target for static windows builds
+            if not self.options.shared:
+              target = "tango-static"
 
-        target = "tango" if self.options.shared else "tango-static"
-        cmake = self._configured_cmake()
+        cmake = CMake(self)
+        cmake.configure(build_script_folder=self.build_folder,cli_args=["--debug-trycompile"])
         cmake.build(target=target)
 
     def package(self):
+        self.output.info(f"Build folder: {self.build_folder}")
+        prefix = self.package_folder
         library_component = "dynamic" if self.options.shared else "static"
         for component in [library_component, "headers", "Unspecified"]:
-            cmd = "cmake {0} -DCMAKE_INSTALL_COMPONENT={1} -DCMAKE_INSTALL_CONFIG_NAME={2} -P cmake_install.cmake"\
-                .format(CMake(self).command_line, component, self.settings.build_type)
-            self.run(command=cmd, cwd=self.build_folder)
+            script = join(self.build_folder, "cmake_install.cmake")
+            cmd = f"cmake -DCMAKE_INSTALL_PREFIX={prefix} -DCMAKE_INSTALL_COMPONENT={component} -DCMAKE_INSTALL_CONFIG_NAME={self.settings.build_type} -P {script}"
+            self.run(command=cmd, cwd=self.package_folder)
 
     def package_info(self):
         if self.settings.os == "Windows":
             debug_suffix = "d" if self.settings.build_type == "Debug" else ""
             library_prefix = "lib" if not self.options.shared else ""
             tango_library = library_prefix + "tango" + debug_suffix
-            self.cpp_info.libs = [
-                tango_library,
-                "Comctl32", # Need this for InitCommonControls
-            ]
+            self.cpp_info.libs = [tango_library]
+            # Need this for InitCommonControls
+            self.cpp_info.system_libs = ["Comctl32"]
         else:
-            self.cpp_info.libs = ["tango", "dl"]
+            self.cpp_info.libs = ["tango"]
+            self.cpp_info.system_libs = ["dl"]
         self.cpp_info.includedirs = ["include", "include/tango"]

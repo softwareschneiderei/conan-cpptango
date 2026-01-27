@@ -1,41 +1,22 @@
 build: false
 
-environment:
-
-    CONAN_USERNAME: "softwareschneiderei"
-    CONAN_CHANNEL: "testing"
-    CONAN_REMOTES: "https://api.bintray.com/conan/bincrafters/public-conan"
-    CONAN_UPLOAD: "https://api.bintray.com/conan/softwareschneiderei/conan"
-    CONAN_BUILD_POLICY: "outdated"
-    
+environment:    
     matrix:
         - APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2019
-          PYTHON: "C:\\Python38"
-          CONAN_ARCHS: "x86"
-          CONAN_VISUAL_RUNTIMES: "MD"
-          CONAN_VISUAL_VERSIONS: 16
-        - APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2019
           PYTHON: "C:\\Python38-x64"
-          CONAN_ARCHS: "x86_64"
-          CONAN_VISUAL_RUNTIMES: "MD"
-          CONAN_VISUAL_VERSIONS: 16
-        - APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2019
-          PYTHON: "C:\\Python38"
-          CONAN_ARCHS: "x86"
-          CONAN_VISUAL_RUNTIMES: "MDd"
-          CONAN_VISUAL_VERSIONS: 16
-        - APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2019
-          PYTHON: "C:\\Python38-x64"
-          CONAN_ARCHS: "x86_64"
-          CONAN_VISUAL_RUNTIMES: "MDd"
-          CONAN_VISUAL_VERSIONS: 16
-
 
 install:
   - set PATH=%PYTHON%;%PYTHON%/Scripts/;%PATH%
-  - pip.exe install conan --upgrade
-  - pip.exe install conan_package_tools
-  - conan user # It creates the conan data directory
+  - pip.exe install conan
+  - conan profile detect
 
 test_script:
-  - python build.py
+  - ps: Start-FileDownload 'https://ci.appveyor.com/api/projects/softwareschneiderei/conan-omniorb/artifacts/omniorb_conan_cache.tgz'
+  - conan cache restore omniorb_conan_cache.tgz
+  # Tango uses functionality deprecated after C++17, so we compile for C++14
+  - conan create . -s compiler.cppstd=14 --build=missing
+  - conan cache save cpptango/* --file cpptango_conan_cache.tgz
+
+artifacts:
+  - path: cpptango_conan_cache.tgz
+    name: cppTango conan cache

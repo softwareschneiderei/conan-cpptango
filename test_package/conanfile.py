@@ -1,23 +1,26 @@
 import os
 
-from conans import ConanFile, CMake, tools
+from conan import ConanFile
+from conan.tools.cmake import CMake, CMakeToolchain, cmake_layout
+from conan.tools.build import can_run
 
 
 class TangoTestConan(ConanFile):
     settings = "os", "compiler", "build_type", "arch"
-    generators = "cmake"
+    generators = ["CMakeToolchain", "CMakeDeps"]
+
+    def requirements(self):
+        self.requires(self.tested_reference_str)
 
     def build(self):
         cmake = CMake(self)
         cmake.configure()
         cmake.build()
 
-    def imports(self):
-        self.copy("*.dll", dst="bin", src="bin")
-        self.copy("*.dylib*", dst="bin", src="lib")
-        self.copy('*.so*', dst='bin', src='lib')
+    def layout(self):
+        cmake_layout(self)
 
     def test(self):
-        if self.settings.os == "Windows" or not tools.cross_building(self.settings):
-            os.chdir("bin")
-            self.run(".%stango_package_test" % os.sep)
+        if can_run(self):
+            cmd = os.path.join(self.cpp.build.bindir, "tango_package_test")
+            self.run(cmd)

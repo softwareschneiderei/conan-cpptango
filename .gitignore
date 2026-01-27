@@ -1,3 +1,9 @@
 /tmp/
 /.idea/
 /venv/
+
+# Temporary folders for local conan workflow
+/build/
+/src/
+/test_package/CMakeUserPresets.json
+/tango-idl/build/
