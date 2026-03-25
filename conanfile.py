@@ -1,5 +1,6 @@
 import os
 import shutil
+import sysconfig
 from os.path import join
 from conan import ConanFile
 from conan.tools.env import Environment
@@ -96,7 +97,11 @@ class CppTangoConan(ConanFile):
 
         cmake.generate()
 
+        # Needs to be the python installation with the .dll, as that is later loaded by omniidl
+        python_base = sysconfig.get_config_var('installed_base')
+
         env = Environment()
+        env.append_path("PATH", python_base)
         for key, value in env_and_vars.items():
             env.define(key, value)
 
