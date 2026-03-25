@@ -83,7 +83,6 @@ class CppTangoConan(ConanFile):
         if self.settings.os == "Windows" and self.options.pthread_windows:
             defs["PTHREAD_WIN"] = join(self.build_folder, "pthreads-win32").replace("\\", "/")
         if self.settings.os == "Windows":
-            defs["CMAKE_DEBUG_POSTFIX"] = "d"
             defs["CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS"] = "ON" if self.options.shared else "OFF"
             defs["OMNIORB_PKG_LIBRARIES"] = ';'.join(self.dependencies["omniorb"].cpp_info.libs)
             defs["ZMQ_PKG_LIBRARIES"] = ';'.join(self.dependencies["zeromq"].cpp_info.libs)
@@ -206,9 +205,12 @@ class CppTangoConan(ConanFile):
                     replace_in_file(self, cmake_windows, '${{{1}_{0}}}'.format(dependency_suffix, variable),
                                           '${{{0}}}'.format(variable))
             
-            # Override the target for static windows builds
+            # Add a 'd' suffix for debug windows builds
+            if self.settings.build_type == "Debug":
+                target += "d"
+            # Add a -static suffix for static windows builds
             if not self.options.shared:
-              target = "tango-static"
+                target += "-static"
         
         cmake = self._configured_cmake()
         cmake.build(target=target)
