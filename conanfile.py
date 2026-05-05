@@ -4,6 +4,7 @@ import sysconfig
 from os.path import join
 from conan import ConanFile
 from conan.tools.env import Environment
+from conan.tools.build import check_min_cppstd
 from conan.tools.cmake import CMake, CMakeToolchain, cmake_layout
 from conan.tools.scm import Git
 from conan.tools.files import replace_in_file, download, unzip, patch, copy
@@ -59,6 +60,9 @@ class CppTangoConan(ConanFile):
         self.requires("omniorb/4.3.4", transitive_headers=True)
         self.requires("tango-idl/6.0.2")
 
+    def validate(self):
+        check_min_cppstd(self, 17)
+
     def layout(self):
         cmake_layout(self, src_folder="src")
 
@@ -67,9 +71,16 @@ class CppTangoConan(ConanFile):
         cpp_tango = Git(self, folder="cppTango")
         cpp_tango.fetch_commit("https://gitlab.com/tango-controls/cppTango.git", f"refs/tags/{tango_release}")
 
+        patch(self, base_path="cppTango", patch_file="patches/001-use-transitive-compile-definitions.patch")
         # Move patches to the cppTango folder
         # for patch_file in PATCHES:
         #     copy(self, patch_file, src=self.recipe_folder, dst=self.source_folder)
+
+    def _idl_compiler(self):
+        omniorb_package = self.dependencies["omniorb"].package_folder.replace("\\", "/")
+        if self.settings.os == "Windows":
+            return f"{omniorb_package}/bin/x86_win32/omniidl.exe"
+        return f"{omniorb_package}/bin/omniidl"
 
     def generate(self):
         self.output.info(f"Using omniORB from {self.dependencies['omniorb'].package_folder}")
@@ -81,7 +92,8 @@ class CppTangoConan(ConanFile):
             'BUILD_TESTING': 'OFF',
             'TANGO_GIT_REVISION': tango_release,
             'TANGO_USE_TELEMETRY': 'OFF',
-            'OMNIIDL': f"{env_and_vars['OMNI_BASE']}/bin/omniidl"
+            'OMNIIDL': self._idl_compiler(),
+            'TANGO_USE_JPEG': 'OFF', # FIXME: currently does not compile on windows, need to patch
         }
         if self.settings.os == "Windows" and self.options.pthread_windows:
             defs["PTHREAD_WIN"] = join(self.build_folder, "pthreads-win32").replace("\\", "/")
@@ -113,9 +125,6 @@ class CppTangoConan(ConanFile):
     def configure(self):
         if self.settings.os == "Linux" and self.settings.compiler.libcxx != "libstdc++11":
             raise ConanInvalidConfiguration("Conan needs the setting 'compiler.libcxx' to be 'libstdc++11' on linux")
-
-        if self.settings.os == "Windows" and self.settings.compiler == "msvc" and self.settings.compiler.cppstd != 14:
-            raise ConanInvalidConfiguration("Tango does not support C++17 and higher on MSVC")
 
         self.options["omniorb"].shared = self.options.shared
         self.options["zeromq"].shared = self.options.shared
@@ -153,26 +162,6 @@ class CppTangoConan(ConanFile):
         target = "tango" # This works for linux and windows/shared
         if self.settings.os == "Linux":
             pass
-
-        # Replace library dependencies by what conan provides
-        if self.settings.os == "Windows":
-            replace_in_file(self, join(self.build_folder, "configure/CMakeLists.txt"),
-                            search="include_directories(${ZMQ_BASE}/include)",
-                            replace="include_directories(${ZMQ_BASE}/include)\n    link_directories(${ZMQ_BASE}/lib)")
-            
-            cmake_windows = join(self.build_folder, "configure/cmake_win.cmake")
-            dependency_variables = ["OMNIORB_PKG_LIBRARIES", "ZMQ_PKG_LIBRARIES", "PTHREAD_WIN_PKG_LIBRARIES"]
-            for dependency_suffix in ["DYN", "STA"]:
-                for variable in dependency_variables:
-                    replace_in_file(self, cmake_windows, '${{{1}_{0}}}'.format(dependency_suffix, variable),
-                                          '${{{0}}}'.format(variable))
-            
-            # Add a 'd' suffix for debug windows builds
-            if self.settings.build_type == "Debug":
-                target += "d"
-            # Add a -static suffix for static windows builds
-            if not self.options.shared:
-                target += "-static"
 
         cmake = CMake(self)
         cmake.configure(build_script_folder=self.build_folder,cli_args=["--debug-trycompile"])

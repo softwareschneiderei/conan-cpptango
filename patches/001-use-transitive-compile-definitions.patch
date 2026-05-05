@@ -1,0 +1,15 @@
+﻿diff --git a/src/include/tango/idl/CMakeLists.txt b/src/include/tango/idl/CMakeLists.txt
+index fb33593..f41e05b 100644
+--- a/src/include/tango/idl/CMakeLists.txt
++++ b/src/include/tango/idl/CMakeLists.txt
+@@ -26,8 +26,10 @@ add_library(idl_objects OBJECT ${SOURCES})
+ target_include_directories(idl_objects SYSTEM PUBLIC $<TARGET_PROPERTY:omniORB4::omniORB4,INTERFACE_INCLUDE_DIRECTORIES>)
+ if (NOT BUILD_SHARED_LIBS AND TARGET omniORB4::thread-static)
+   target_compile_options(idl_objects PRIVATE $<TARGET_PROPERTY:omniORB4::thread-static,INTERFACE_COMPILE_OPTIONS>)
++  target_compile_definitions(idl_objects PRIVATE $<TARGET_PROPERTY:omniORB4::thread-static,INTERFACE_COMPILE_DEFINITIONS>)
+ else()
+   target_compile_options(idl_objects PRIVATE $<TARGET_PROPERTY:omniORB4::thread,INTERFACE_COMPILE_OPTIONS>)
++  target_compile_definitions(idl_objects PRIVATE $<TARGET_PROPERTY:omniORB4::thread,INTERFACE_COMPILE_DEFINITIONS>)
+ endif()
+ add_dependencies(idl_objects idl_source)
+ 
