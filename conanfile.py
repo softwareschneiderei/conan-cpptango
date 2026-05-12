@@ -10,8 +10,6 @@ from conan.tools.scm import Git
 from conan.tools.files import replace_in_file, download, unzip, patch, copy
 from conan.errors import ConanException, ConanInvalidConfiguration
 
-PTHREADS_WIN32 = "https://github.com/tango-controls/Pthread_WIN32/releases/download/2.9.1/pthreads-win32-2.9.1_{0}.zip"
-
 tango_release='10.1.1'
 
 class CppTangoConan(ConanFile):
@@ -25,31 +23,12 @@ class CppTangoConan(ConanFile):
     settings = "os", "compiler", "build_type", "arch"
     generators = "CMakeDeps"
     options = {
-        "shared": [True, False],
-        "pthread_windows": [True, False]
+        "shared": [True, False]
     }
     default_options = {
-        "shared": False,
-        "pthread_windows": False
+        "shared": False
     }
     exports_sources = "patches/*.patch"
-
-    def _download_windows_pthreads(self):
-        if self.settings.arch == "x86_64":
-            arch = "x64"
-        elif self.settings.arch == "x86":
-            arch = "win32"
-        else:
-            raise ConanInvalidConfiguration("Can only build for x86 or x86_64")
-        # VS 2019 is ABI compatible to VS 2017, fortunately
-        visual_studio_version = min(int(str(self.settings.compiler.version)), 15)
-        suffix = "{0}-msvc{1}".format(arch, visual_studio_version)
-        url = PTHREADS_WIN32.format(suffix)
-        self.output.info("Downloading from {0}".format(url))
-        zip_file = "pthreads-win32.zip"
-        download(self, url, zip_file)
-        unzip(self, zip_file, "pthreads-win32")
-        os.unlink(zip_file)
 
     def requirements(self):
         self.requires("zlib/1.2.11")
@@ -87,10 +66,8 @@ class CppTangoConan(ConanFile):
 
     def generate(self):
         self.output.info(f"Using omniORB from {self.dependencies['omniorb'].package_folder}")
-        env_and_vars = self._env_and_vars()
         cmake = CMakeToolchain(self)
         defs = {
-            'IDL_BASE': join(self.build_folder, "tango-idl").replace("\\", "/"),
             'CMAKE_INSTALL_COMPONENT': "dynamic" if self.options.shared else "static",
             'BUILD_TESTING': 'OFF',
             'TANGO_GIT_REVISION': tango_release,
@@ -98,17 +75,11 @@ class CppTangoConan(ConanFile):
             'OMNIIDL': self._idl_compiler(),
             'TANGO_USE_JPEG': 'OFF', # FIXME: currently does not compile on windows, need to patch
         }
-        if self.settings.os == "Windows" and self.options.pthread_windows:
-            defs["PTHREAD_WIN"] = join(self.build_folder, "pthreads-win32").replace("\\", "/")
         if self.settings.os == "Windows":
             defs["CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS"] = "ON" if self.options.shared else "OFF"
-            defs["OMNIORB_PKG_LIBRARIES"] = ';'.join(self.dependencies["omniorb"].cpp_info.libs)
-            defs["ZMQ_PKG_LIBRARIES"] = ';'.join(self.dependencies["zeromq"].cpp_info.libs)
-            defs["PTHREAD_WIN_PKG_LIBRARIES"] = ""
             defs["CMAKE_BUILD_TYPE"] = str(self.settings.build_type).upper()
             defs["TANGO_INSTALL_DEPENDENCIES"] = "OFF"
 
-        defs.update(env_and_vars)
         for key, value in defs.items():
             cmake.variables[key] = value
 
@@ -119,9 +90,6 @@ class CppTangoConan(ConanFile):
 
         env = Environment()
         env.append_path("PATH", python_base)
-        for key, value in env_and_vars.items():
-            env.define(key, value)
-
         envvars = env.vars(self)
         envvars.save_script("setenv")
 
@@ -132,24 +100,10 @@ class CppTangoConan(ConanFile):
         self.options["omniorb"].shared = self.options.shared
         self.options["zeromq"].shared = self.options.shared
 
-    def config_options(self):
-        if self.settings.os != "Windows":
-            del self.options.pthread_windows
-
-    def _env_and_vars(self):
-        return {
-            "OMNI_BASE": self.dependencies["omniorb"].package_folder.replace("\\", "/"),
-            "ZMQ_BASE": self.dependencies["zeromq"].package_folder.replace("\\", "/"),
-            "CPPZMQ_BASE": self.dependencies["cppzmq"].package_folder.replace("\\", "/"),
-        }
-
     def _cmake_comment_out(self, file, content):
         replace_in_file(self, file, content, "# " + content)
 
     def build(self):
-        if self.settings.os == "Windows" and self.options.pthread_windows:
-            self._download_windows_pthreads()
-
         source_location = join(self.source_folder, "cppTango")
 
         # tango seems to only support in-source builds right now
