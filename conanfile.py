@@ -71,10 +71,14 @@ class CppTangoConan(ConanFile):
         cpp_tango = Git(self, folder="cppTango")
         cpp_tango.fetch_commit("https://gitlab.com/tango-controls/cppTango.git", f"refs/tags/{tango_release}")
 
-        patch(self, base_path="cppTango", patch_file="patches/001-use-transitive-compile-definitions.patch")
-        # Move patches to the cppTango folder
-        # for patch_file in PATCHES:
-        #     copy(self, patch_file, src=self.recipe_folder, dst=self.source_folder)
+        patches = [
+            "patches/001-use-transitive-compile-definitions.patch",
+            "patches/002-remove_runtime_library_override.patch"
+        ]
+
+        for file in patches:
+            patch(self, base_path="cppTango", patch_file=file)
+        
 
     def _idl_compiler(self):
         omniorb_package = self.dependencies["omniorb"].package_folder.replace("\\", "/")
@@ -160,11 +164,9 @@ class CppTangoConan(ConanFile):
         replace_in_file(self, join(self.build_folder, "configure/functions.cmake"), search="cppzmq::cppzmq", replace="cppzmq")
 
         target = "tango" # This works for linux and windows/shared
-        if self.settings.os == "Linux":
-            pass
 
         cmake = CMake(self)
-        cmake.configure(build_script_folder=self.build_folder,cli_args=["--debug-trycompile"])
+        cmake.configure(build_script_folder=self.build_folder)
         cmake.build(target=target)
 
     def package(self):
@@ -178,9 +180,7 @@ class CppTangoConan(ConanFile):
 
     def package_info(self):
         if self.settings.os == "Windows":
-            debug_suffix = "d" if self.settings.build_type == "Debug" else ""
-            library_prefix = "lib" if not self.options.shared else ""
-            tango_library = library_prefix + "tango" + debug_suffix
+            tango_library = "libtango" if self.options.shared else "tango-static"
             self.cpp_info.libs = [tango_library]
             # Need this for InitCommonControls
             self.cpp_info.system_libs = ["Comctl32"]

@@ -1,4 +1,4 @@
-﻿diff --git a/src/include/tango/idl/CMakeLists.txt b/src/include/tango/idl/CMakeLists.txt
+diff --git a/src/include/tango/idl/CMakeLists.txt b/src/include/tango/idl/CMakeLists.txt
 index fb33593..f41e05b 100644
 --- a/src/include/tango/idl/CMakeLists.txt
 +++ b/src/include/tango/idl/CMakeLists.txt

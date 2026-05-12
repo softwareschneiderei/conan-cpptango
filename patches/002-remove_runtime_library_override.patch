@@ -1,0 +1,9 @@
+diff --git a/configure/cmake_win_defs.cmake b/configure/cmake_win_defs.cmake
+index 8729fce..4c6ea02 100644
+--- a/configure/cmake_win_defs.cmake
++++ b/configure/cmake_win_defs.cmake
+@@ -46,4 +46,3 @@ else()
+     set(windows_defs ${static_defs})
+ endif()
+ 
+-set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>$<$<BOOL:${BUILD_SHARED_LIBS}>:DLL>")
