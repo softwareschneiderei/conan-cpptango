@@ -3,7 +3,9 @@ build: false
 environment:    
     matrix:
         - APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2022
-          PYTHON: "C:\\Python38-x64"
+        # IMPORTANT: This must be the same version as for the omniorb build that is being pulled.
+        # This is because tango needs omniidl which links to python and requires the same python dll to run.
+          PYTHON: "C:\\Python311-x64" 
 
 install:
   - set PATH=%PYTHON%;%PYTHON%/Scripts/;%PATH%
