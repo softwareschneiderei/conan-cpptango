@@ -32,8 +32,7 @@ class CppTangoConan(ConanFile):
         "shared": False,
         "pthread_windows": False
     }
-    file_prefix = "{0}-{1}".format(name, version)
-    source_archive = "{0}.tar.gz".format(file_prefix)
+    exports_sources = "patches/*.patch"
 
     def _download_windows_pthreads(self):
         if self.settings.arch == "x86_64":
