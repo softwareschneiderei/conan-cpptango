@@ -23,10 +23,12 @@ class CppTangoConan(ConanFile):
     settings = "os", "compiler", "build_type", "arch"
     generators = "CMakeDeps"
     options = {
-        "shared": [True, False]
+        "shared": [True, False],
+        "use_jpeg": [True, False],
     }
     default_options = {
-        "shared": False
+        "shared": False,
+        "use_jpeg": True,
     }
     exports_sources = "patches/*.patch"
 
@@ -51,7 +53,8 @@ class CppTangoConan(ConanFile):
 
         patches = [
             "patches/001-use-transitive-compile-definitions.patch",
-            "patches/002-remove_runtime_library_override.patch"
+            "patches/002-remove_runtime_library_override.patch",
+            "patches/003-fix_jpeg_size_type.patch",
         ]
 
         for file in patches:
@@ -73,7 +76,7 @@ class CppTangoConan(ConanFile):
             'TANGO_GIT_REVISION': tango_release,
             'TANGO_USE_TELEMETRY': 'OFF',
             'OMNIIDL': self._idl_compiler(),
-            'TANGO_USE_JPEG': 'OFF', # FIXME: currently does not compile on windows, need to patch
+            'TANGO_USE_JPEG': "ON" if self.options.use_jpeg else "OFF",
         }
         if self.settings.os == "Windows":
             defs["CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS"] = "ON" if self.options.shared else "OFF"

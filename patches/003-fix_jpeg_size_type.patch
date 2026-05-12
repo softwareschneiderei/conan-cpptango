@@ -1,0 +1,13 @@
+diff --git a/src/server/encoded_attribute.cpp b/src/server/encoded_attribute.cpp
+index 02061cb..df2f0e0 100644
+--- a/src/server/encoded_attribute.cpp
++++ b/src/server/encoded_attribute.cpp
+@@ -561,7 +561,7 @@ void jpeg_encode_rgb(int width,
+ 
+     jpeg_create_compress(&cinfo);
+ 
+-    unsigned long size;
++    size_t size{};
+     jpeg_mem_dest(&cinfo, jpegData, &size);
+ 
+     cinfo.image_width = width; /* image width and height, in pixels */
