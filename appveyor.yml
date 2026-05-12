@@ -8,7 +8,6 @@ environment:
 install:
   - set PATH=%PYTHON%;%PYTHON%/Scripts/;%PATH%
   - pip.exe install conan
-  - conan profile detect
 
 test_script:
   # Get omniORB dependency
@@ -17,7 +16,7 @@ test_script:
   # Add tango-idl dependency
   - conan export tango-idl
   # Build cpptango
-  - conan create . -build=missing
+  - conan create . -pr:a=appveyor/conan_profile --build=missing
   - conan cache save cpptango/* --file cpptango_conan_cache.tgz
 
 artifacts:
