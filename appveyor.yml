@@ -2,7 +2,7 @@ build: false
 
 environment:    
     matrix:
-        - APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2019
+        - APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2022
           PYTHON: "C:\\Python38-x64"
 
 install:
@@ -11,10 +11,13 @@ install:
   - conan profile detect
 
 test_script:
+  # Get omniORB dependency
   - ps: Start-FileDownload 'https://ci.appveyor.com/api/projects/softwareschneiderei/conan-omniorb/artifacts/omniorb_conan_cache.tgz'
   - conan cache restore omniorb_conan_cache.tgz
-  # Tango uses functionality deprecated after C++17, so we compile for C++14
-  - conan create . -s compiler.cppstd=14 --build=missing
+  # Add tango-idl dependency
+  - conan export tango-idl
+  # Build cpptango
+  - conan create . -build=missing
   - conan cache save cpptango/* --file cpptango_conan_cache.tgz
 
 artifacts:
