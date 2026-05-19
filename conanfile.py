@@ -80,7 +80,7 @@ class CppTangoConan(ConanFile):
         }
         if self.settings.os == "Windows":
             defs["CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS"] = "ON" if self.options.shared else "OFF"
-            defs["CMAKE_BUILD_TYPE"] = str(self.settings.build_type).upper()
+            defs["CMAKE_BUILD_TYPE"] = str(self.settings.build_type)
             defs["TANGO_INSTALL_DEPENDENCIES"] = "OFF"
 
         for key, value in defs.items():
@@ -136,7 +136,11 @@ class CppTangoConan(ConanFile):
 
     def package_info(self):
         if self.settings.os == "Windows":
-            tango_library = "libtango" if self.options.shared else "tango-static"
+            debug_suffix = "d" if self.settings.build_type == "Debug" else ""
+            # sic! it adds the debug suffix twice. See configure/cmake_win.cmake
+            tango_library = f"libtango{debug_suffix}"
+            if not self.options.shared:
+                tango_library += f"-static{debug_suffix}"
             self.cpp_info.libs = [tango_library]
             # Need this for InitCommonControls
             self.cpp_info.system_libs = ["Comctl32"]
